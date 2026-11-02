@@ -259,13 +259,6 @@ Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
    ignored). Keep e2e-customer.js, probe-raw-ws.js, test-operator-flow.js.
 
 
-ISSUE:
-
-I've created a script that creates a new Customer, a Temp MUC room and sends a message to the room, I also have an Operator logged into the Operator's Live chat console, upon executing the script the DevTools Network console logs the message, this message:
-
-<message xmlns='jabber:client' to='janedoe@localhost' from='26202808-78af-4b17-8a36-0e8543e16649_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference' id='1793642993287394'><archived by='janedoe@localhost' id='1793642993290172' xmlns='urn:xmpp:mam:tmp'/><stanza-id by='janedoe@localhost' id='1793642993290172' xmlns='urn:xmpp:sid:0'/><event xmlns='http://jabber.org/protocol/pubsub#event'><items node='urn:xmpp:mucsub:nodes:messages'><item id='1793642993287394'><message xml:lang='en' to='janedoe@localhost' from='26202808-78af-4b17-8a36-0e8543e16649_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference/Probe Customer' type='groupchat' xmlns='jabber:client'><archived by='26202808-78af-4b17-8a36-0e8543e16649_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference' id='1793642993287394' xmlns='urn:xmpp:mam:tmp'/><stanza-id by='26202808-78af-4b17-8a36-0e8543e16649_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference' id='1793642993287394' xmlns='urn:xmpp:sid:0'/><occupant-id id='g20AAAAg5iGyiS6e7L8zBZEWGOBQxNjLONRRIQU4bpOXNBNE4c8=' xmlns='urn:xmpp:occupant-id:0'/><body>TEST 2</body></message></item></items></event></message>
-
-But no new room card is created!
 
 IMPORTANT: Keep this file (spec.txt) updated with your progress.
 

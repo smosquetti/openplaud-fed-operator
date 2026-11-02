@@ -25,12 +25,19 @@ export function ChatWindow({ r }: { r: RoomState }) {
   function onTitleMouseDown(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest('.win-actions')) return;
     const el = winRef.current;
-    if (!el) return;
+    const canvas = el?.parentElement; // .op-canvas — the positioned ancestor of .chat-window
+    if (!el || !canvas) return;
+    // The window's left/top are RELATIVE to .op-canvas, but clientX and
+    // getBoundingClientRect() are viewport coordinates. Convert the cursor
+    // into canvas space, otherwise the window jumps by the left panel's width
+    // the moment the drag starts.
+    const canvasRect = canvas.getBoundingClientRect();
     const rect = el.getBoundingClientRect();
     const dx = e.clientX - rect.left;
     const dy = e.clientY - rect.top;
     focusRoom(r.room);
-    const onMove = (ev: MouseEvent) => moveRoom(r.room, ev.clientX - dx, ev.clientY - dy);
+    const onMove = (ev: MouseEvent) =>
+      moveRoom(r.room, ev.clientX - canvasRect.left - dx, ev.clientY - canvasRect.top - dy);
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);

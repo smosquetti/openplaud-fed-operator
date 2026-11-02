@@ -38,7 +38,7 @@ function stanzaIdOf(el) {
 }
 function nickOf(jid) {
   const parts = jid.split('/');
-  return parts.length > 2 ? parts.slice(2).join('/') : '';
+  return parts.length > 1 ? parts.slice(1).join('/') : '';
 }
 const MUC_SERVICE = 'conference';
 

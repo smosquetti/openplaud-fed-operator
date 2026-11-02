@@ -117,7 +117,7 @@ function findTextDescendant(root: Element | null, name: string): string | null {
 
 function nickOfLocal(jid: string): string {
   const parts = jid.split('/');
-  return parts.length > 2 ? parts.slice(2).join('/') : '';
+  return parts.length > 1 ? parts.slice(1).join('/') : '';
 }
 
 function localpartOf(jid: string): string {
