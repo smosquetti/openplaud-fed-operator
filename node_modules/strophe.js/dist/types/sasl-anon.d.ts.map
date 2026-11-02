@@ -1,0 +1,1 @@
+{"version":3,"file":"sasl-anon.d.ts","sourceRoot":"","sources":["../../src/sasl-anon.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,UAAU,MAAM,cAAc,CAAC;AAC3C,OAAO,aAAa,MAAM,QAAQ,CAAC;AAEnC,cAAM,aAAc,SAAQ,aAAa;gBACzB,QAAQ,SAAc,EAAE,aAAa,UAAQ,EAAE,QAAQ,SAAK;IAIxE,IAAI,CAAC,UAAU,EAAE,UAAU,GAAG,OAAO;CAGxC;AAED,eAAe,aAAa,CAAC"}

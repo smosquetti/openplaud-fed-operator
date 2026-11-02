@@ -1,0 +1,1 @@
+{"version":3,"file":"sasl-oauthbearer.d.ts","sourceRoot":"","sources":["../../src/sasl-oauthbearer.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,UAAU,MAAM,cAAc,CAAC;AAC3C,OAAO,aAAa,MAAM,QAAQ,CAAC;AAGnC,cAAM,eAAgB,SAAQ,aAAa;gBAC3B,QAAQ,SAAgB,EAAE,aAAa,UAAO,EAAE,QAAQ,SAAK;IAIzE,IAAI,CAAC,UAAU,EAAE,UAAU,GAAG,OAAO;IAIrC,WAAW,CAAC,UAAU,EAAE,UAAU,GAAG,MAAM;CAa9C;AAED,eAAe,eAAe,CAAC"}

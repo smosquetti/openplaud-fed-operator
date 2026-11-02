@@ -1,0 +1,1 @@
+{"version":3,"file":"sasl-xoauth2.d.ts","sourceRoot":"","sources":["../../src/sasl-xoauth2.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,UAAU,MAAM,cAAc,CAAC;AAC3C,OAAO,aAAa,MAAM,QAAQ,CAAC;AAGnC,cAAM,WAAY,SAAQ,aAAa;gBACvB,QAAQ,SAAa,EAAE,aAAa,UAAO,EAAE,QAAQ,SAAK;IAItE,IAAI,CAAC,UAAU,EAAE,UAAU,GAAG,OAAO;IAIrC,WAAW,CAAC,UAAU,EAAE,UAAU,GAAG,MAAM;CAS9C;AAED,eAAe,WAAW,CAAC"}

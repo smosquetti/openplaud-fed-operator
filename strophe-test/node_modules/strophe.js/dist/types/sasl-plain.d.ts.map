@@ -1,0 +1,1 @@
+{"version":3,"file":"sasl-plain.d.ts","sourceRoot":"","sources":["../../src/sasl-plain.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,UAAU,MAAM,cAAc,CAAC;AAC3C,OAAO,aAAa,MAAM,QAAQ,CAAC;AAGnC,cAAM,SAAU,SAAQ,aAAa;gBACrB,QAAQ,SAAU,EAAE,aAAa,UAAO,EAAE,QAAQ,SAAK;IAInE,IAAI,CAAC,UAAU,EAAE,UAAU,GAAG,OAAO;IAIrC,WAAW,CAAC,UAAU,EAAE,UAAU,GAAG,MAAM;CAY9C;AAED,eAAe,SAAS,CAAC"}

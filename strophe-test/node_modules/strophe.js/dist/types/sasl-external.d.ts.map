@@ -1,0 +1,1 @@
+{"version":3,"file":"sasl-external.d.ts","sourceRoot":"","sources":["../../src/sasl-external.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,UAAU,MAAM,cAAc,CAAC;AAC3C,OAAO,aAAa,MAAM,QAAQ,CAAC;AAEnC,cAAM,YAAa,SAAQ,aAAa;gBACxB,QAAQ,SAAa,EAAE,aAAa,UAAO,EAAE,QAAQ,SAAK;IAItE,WAAW,CAAC,UAAU,EAAE,UAAU,GAAG,MAAM;CAG9C;AAED,eAAe,YAAY,CAAC"}

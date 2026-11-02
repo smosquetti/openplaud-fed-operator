@@ -1,0 +1,17 @@
+{
+  "name": "strophe-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.12",
+    "saxes": "^6.0.0",
+    "strophe.js": "^5.0.0",
+    "ws": "^8.22.1"
+  }
+}

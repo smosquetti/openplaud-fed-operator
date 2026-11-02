@@ -1,0 +1,272 @@
+openplaud-fed-operator
+
+React + Next.js
+
+An XMPP powered chat call center, an operator should first log in with their XMPP credentials then after authenticated they have access to the list of Operator Groups they are part of and should subscribe the Groups respective persistent MUC rooms.
+
+The login:
+
+The openlaud-srv-admin has an endpoint for Operators to login/authenticate, this validates if the Operator has the right to access the chat interface and take "calls".
+
+Ejabberd and XMPP:
+
+The chat call center should connect the Operator with the ejabberd server using the Strophe.js library over Websocket (try to avoid BOSH), the openlaud-srv-admin is only for authentication and management.
+
+The interface:
+
+There's vertical panel on the left side of the page, this panel shows each MUC room the Operator is receiving messages from, each MUC is represented by a card with the title/header being the name of the Group (if it is a persistent MUC room based on an Operator Group) or the name (nick in ejabberd) of the user who created the Tempo Room, below the title the lastest message sent within the room should be shown. When clicking on the card a Chat windows should apear to the right of this vertical panel, the entire conversation history should be shown and the Operator can choose to accept the "call" by joining it, when joining the chat all other Operators should be removed from the MUC room so the Operator can have a 1:1 conversation with the user who created the temporary MUC room.
+
+The Temporary MUC room should be titled after the User's nick (the User is the sole occupant with a 'member' affiliation) or the MUC's title, all the Operators are configured with an 'admin' affiliation. (the Temporary MUC room is idenfitied on Ejabbed by its name, created from the combination of the user's XMPP username (localpart) with is an auto-generated UUID and an underscore '_' and the Operator Group UUID example: c04582c4-cf45-4191-a8ac-6d9b0b041c79_c7fc5856-51f2-47d3-a0d2-ef26a6692200 snake_case style. The Operator may use the last part, the groupId, after the underscore to get the list of Operators assigned to the Group so a future chat transfer is possible.)
+
+An Operator can have multiple chat rooms open at any given time and should be able to drag the chat window around the page as well as minimize it to the bottom of the page to avoid too many distracting chat windows populating the page.
+
+Operators are subscribed to Temporary MUC room upon creation, the Operators are selected based on the Group they belong to.
+
+Subscribing to a Multi-User Chat (MUC) room in ejabberd (via the MucSub / MUC/Sub extension) allows a user to receive group messages and room events directly to their Jabber ID (JID) as a PubSub node, without needing to "join" the room or send online presence stanzas.
+
+What Subscribing Does
+
+• Receive Messages Without Presence: You get all chat messages and room notifications routed to your JID without having to show up as an active, online participant in the room's occupant list.
+• PubSub Architecture: It exposes the MUC room like a Publish-Subscribe (PubSub) channel. When messages are published to the room, the server delivers them to all subscribed JIDs.
+
+POST /api/v1/chatroom endpoint does not require authentication
+GET /api/v1/groups endpoint does not require authentication
+
+Those two endpoints are public for the Customer's end to consume.
+
+Let me know if you need more information to build a working multi-chat call center like hub for an Operator to communicate with users via XMPP/ejabberd
+
+Operator: Stevan Mosquetti
+Operator login/JID: stevanmosquetti@localhost
+Password: 12345678
+Operator UUID: a6fd0e11-9502-43b6-b739-82c85337015f
+
+Group: Backend Support Team
+Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
+
+## Flow Test
+- Using the script located inside the /strophe-test directory inside the project tests if the flow
+  works using the Strophe.js library
+  1. Sets up the room (customer registered, room created).
+  2. Operator connects AND sends $pres() (initial availability).
+  3. Customer connects, joins, sends message.
+  4. Operator (with $pres() sent) receives the wrapped event.
+
+  Additional information:
+
+  In ejabberd 26, the intersection of MUC/Sub, members-only rooms, and non-occupant Admins contains a strict, counter-intuitive routing trap.
+
+   The Problem: Admin ≠ Member in ejabberd 26 routing
+
+   When a room is marked members-only, ejabberd 26 triggers a hard intercept hook (check_access) inside mod_muc.
+   • The Trap: When a standard occupant sends a message, ejabberd loops over the active subscription list. For every recipient, it evaluates whether they have permission to see the content of that members-only room.
+   • The Check: The routing engine evaluates if the target JID has the specific authorization state of member.
+   • The Failure: Even though an admin or owner affiliation holds a higher general rank than a member, ejabberd's literal validation check looks for the member attribute specifically in the room's access list. If you are an admin but your JID is missing from the explicit room member list, the packet is silently dropped by the privacy check before it hits the delivery queue.
+
+   IMPORTANT: At this moment the API is setting the Operator's affiliation as 'admin' I've kept this behaviour because other changes are in place and I want to make sure which one actually fixes the issue.
+   If the test fails the next step will be to change the API to set the Operator's affiliation to 'member' during the MUC creation process.
+
+
+---
+# HANDOFF: progress, decisions, and how to resume (updated 2026-11-01)
+
+## Locked decisions (do NOT revisit)
+1. XMPP client = Strophe.js over native WebSocket (user decision; "try to avoid BOSH").
+   Target endpoint: ws://localhost:5280/websocket.
+   Fallback (only if native WS proves unusable at request time): BOSH http://localhost:5280/bosh (works today, zero server changes).
+   Keep the transport configurable via env in the app so it can switch.
+2. next-ejabberd@1.0.5 evaluated and REJECTED — do not reconsider.
+   1:1-centric; no clean MUC join/subscribe; room:join/leave declared but never emitted.
+3. ejabberd.yml may be modified on the LIVE server (user approved: "You apply it + restart").
+4. Test operator (throwaway): stevanmosquetti@localhost / password 12345678.
+5. MucSub (XEP-0412) semantics (confirmed by user):
+   - Operators are auto-subscribed to temp MUC rooms at creation (server-side POST /chatroom).
+   - Operators receive group + temp-room messages WITHOUT joining / no online presence:
+     messages route to their JID as a PubSub node.
+   - Consequence: the left panel is MESSAGE-driven (cards appear from incoming MucSub messages), not presence-driven.
+
+## Live environment (verified)
+- Docker stack on this host: containers `ejabberd` (ejabberd/ecs, ejabberd 26.9.0), `postgres_db`, `my-redis`; Kotlin/Java API on http://localhost:8080.
+- API base URL: http://localhost:8080/api/v1
+- XMPP: domain `localhost`; MUC service `conference`; MUC host `conference.localhost` (room JIDs: `room@conference.localhost`).
+- mod_mam enabled (mnesia backend) for history.
+- ejabberd HTTP: 5280 = plain HTTP, handlers /admin, /api, /bosh, /websocket; 5443 = TLS, also /websocket.
+- App must call the admin API server-side (Next.js proxy, mirroring openplaud-fed-admin) so the API URL never leaks into the client bundle.
+
+## Admin API (openplaud-srv-admin, Kotlin) — key endpoints
+- GET  /operator/login        — Basic auth; 200 (valid) / 401. Body has NO operator id.
+- GET  /operators             — [{id,name,email,xmppUser}]; resolve operatorId by matching XMPP localpart against xmppUser.
+- GET  /operators/{id}/groups — [{id,name,room,service}].
+- POST /chatroom              — {user,name,groupId,service} → 201 {room,service}; auto-subscribes the group's operators.
+- POST /chatroom/join         — {operatorId,groupId,room} → 200; accepts the call, outcasts other operators → 1:1.
+- POST /chatroom/transfer     — {room,operatorId,previousOperatorId,service} → 200.
+- POST /operators             — creates operator → 201 with one-time initialPassword (admin use).
+- Temp room naming: `<userLocalPart>_<groupUUID>` (e.g. c04582c4-..._c7fc5856-...);
+  the part AFTER the underscore is the groupId → use it to fetch group operators for transfer.
+
+## ejabberd.yml server change — APPLIED, server RESTORED
+- ADDED `/websocket: ejabberd_http_ws` to the 5280 (PORT_HTTP) request_handlers — KEPT.
+- `modules: mod_websocket` is INVALID: it is an external/contrib module; under `modules:` it crashed
+  startup ("unknown ejabberd module ... use toplevel option: install_contrib_modules"). REVERTED.
+- VERIFIED: GET http://localhost:5280/websocket → 200 info page served by `ejabberd_http_ws`
+  (the WS handler ships in this ejabberd 26.9 release; no modules entry needed).
+- VERIFIED (MILESTONE): native WebSocket transport WORKS end-to-end with Strophe.js 5.0.0 —
+  ws://localhost:5280/websocket → SASL PLAIN → bind as stevanmosquetti@localhost/probe.
+  BOSH fallback NOT needed. Re-check command:
+    cd openplaud-fed-operator && NODE_PATH=/tmp/strophe-test/node_modules node /tmp/strophe-test/test-ws.js
+    → expect `RESULT: CONNECTED jid=stevanmosquetti@localhost/probe`
+  (The earlier /tmp/xmpp_ws_test.js raw-frame experiment is superseded — reference only.)
+- Config copies: /tmp/ejabberd.yml (current good copy), /tmp/ejabberd.yml.bak (original).
+- Deploy procedure (container must be STARTED before exec, it stops after a config crash):
+    docker cp /tmp/ejabberd.yml ejabberd:/home/ejabberd/conf/ejabberd.yml
+    docker start ejabberd
+    docker exec -u root ejabberd chown ejabberd:ejabberd /home/ejabberd/conf/ejabberd.yml
+    docker exec -u root ejabberd chmod 640 /home/ejabberd/conf/ejabberd.yml
+    docker exec ejabberd ejabberdctl status
+- Current status at write time: RUNNING (ejabberdctl status = "ejabberd 26.9.0 is running").
+
+## App status — BUILT (updated 2026-11-02)
+- Repo dir: openplaud-fed-operator/ (this directory). Next.js App Router + TypeScript + React 19
+  (next 16.4.3, react 19.3.0, bootstrap 5.3.8, strophe.js 5.0.0) mirroring openplaud-fed-admin conventions
+  (server-side API proxy, env config).
+- Build: `next build` clean (TypeScript only, 0 errors). `npx tsc --noEmit` exit 0. `npm run lint` =
+  2 problems (1 error + 1 warning), **exit 1** — IDENTICAL profile to admin:
+  - ERROR react-hooks/set-state-in-effect @ lib/auth.tsx:74 — faithful mirror of admin's identical
+    error (lib/auth.tsx:72). Intentional, NOT a divergence (hydration-safe 'checking' state + mount
+    revalidation effect). Do not "fix" it out of alignment.
+  - WARN  react/no-unescaped-entities @ components/Icon or Logo.tsx — exact admin mirror.
+- Login flow VERIFIED in a real browser (agent-browser): credentials → GET /operator/login (Basic)
+  → resolve operatorId via GET /operators (xmppUser localpart match) → session "Stevan Mosquetti" /
+  stevanmosquetti@localhost → workspace renders with Sign out button.
+- Files: app/{page.tsx, login/page.tsx, globals.css, api/proxy/[...path]/route.ts};
+  lib/{api.ts, types.ts, auth.tsx, config.ts}; lib/xmpp/{client.ts, store.tsx, types.ts, history.ts};
+  components/{Workspace, RoomCard, ChatWindow, Dock, TransferDialog, Toaster, Icon, Logo}.tsx.
+- Server-side API proxy: app/api/proxy/[...path]/route.ts (ALLOWED_ROOTS operator|operators|groups|
+  chatroom); API_BASE_URL stays server-side (never leaks); env via NEXT_PUBLIC_XMPP_* (ws URL
+  ws://localhost:5280/websocket, domain localhost, service conference).
+- Dev server: `npm run dev` → http://localhost:3000 (running in background).
+
+### Flow (as implemented)
+  1. Login (app/login/page.tsx): raw fetch GET /operator/login with explicit
+     `{auth: toBasicToken(u,password)}`; on success resolve operatorId via GET /operators BEFORE
+     storing session; store sessionStorage 'openplaud.operator.session'.
+  2. XmppClient (lib/xmpp/client.ts): Strophe 5.0.0 over native WebSocket; connect as
+     `${localpart}@${domain}/${resource}`; sendIQ wrapper (12s timeout, resolves result/error);
+     mucSubscribe (type=set + nick), mucSubscriptions (type=get <subscriptions/>), mucJoin/mucLeave,
+     sendGroupMessage/sendDirect, mamStats.
+  3. store.tsx (ChatProvider): MucSub-subscribe each group's persistent room ONLY on CONNECTED
+     (post-SASL — pre-auth IQs make this server close the stream, see RESOLVED below);
+     MESSAGE-driven cards; per-room history accumulation (see MAM limitation below); dedupe by
+     stanza-id (`sid:<id>`)
+     + synthetic `syn:<room>|<nick>|<body>|<ts>`; own groupchat NOT optimistic (echo has stanza-id),
+     DMs optimistic (no echo).
+  4. Left panel (Workspace): RoomCard per room — title = group name (persistent) / creator's nick
+     (temp); subtitle = latest message.
+  5. Card click → ChatWindow right of panel: history + composer + "Accept call".
+  6. Accept call: POST /chatroom/join {operatorId,groupId,room} + MUC join → other operators outcast
+     → 1:1. Windows: multiple open, draggable, minimize to bottom Dock.
+  7. Transfer (TransferDialog): mucsub subscription list (minus self + customer) resolved via
+     GET /operators → POST /chatroom/transfer {room, operatorId:toId, previousOperatorId:me, service}.
+- Strophe library: npm package `strophe.js` — NOT `strophe`.
+- Verify end-to-end with stevanmosquetti@localhost / 12345678 before calling it done (PENDING — see
+  Remaining tasks).
+
+### XMPP / Strophe learnings (verified live against ejabberd 26.9 — do NOT revisit)
+- MucSub subscribe CONFIRMED: `<iq to='room@conference' type='set'><subscribe xmlns='urn:xmpp:
+  mucsub:0' nick='...'/></iq>` — type='get' is REJECTED; the `nick` attribute is required.
+- Subscription list: `<iq type='get' to='room@conference'><subscriptions xmlns='urn:xmpp:mucsub:0'/></iq>`
+  → `<subscription jid='...' nick='...'/>` items (used for transfer candidates; /groups/{id}/operators
+  is admin-gated so NOT usable).
+- MucSub delivery wrapper: outer `<message to='BARE'>` → `<event pubsub#event>` →
+  `<items node='urn:xmpp:mucsub:nodes:messages'>` → `<item>` → inner
+  `<message from='room@conference/Nick' type='groupchat'><body>..</body></message>`.
+- Room naming: group = `room@conference` (service EXACTLY "conference"); temp = `<userLocalPart>_
+  <groupUUID>`; part AFTER first '_' = groupId; part BEFORE = customer localpart (excluded from
+  transfer candidates; MAM partner for temp calls).
+- MUC join: `$pres({to:'room@conference/Nick'}).c('x',{xmlns:'http://jabber.org/protocol/muc'})`;
+  leave = presence type='unavailable'; send = `$msg({to:room,type:'groupchat'})`. Initial `$pres()`
+  after connect is REQUIRED for MucSub routing. Non-occupant group send is dropped → auto-join on
+  first send (pendingBody + 3s fallback).
+- MAM LIMITATION (locked): the custom mod_mam build returns ONLY
+  `<fin complete='true'><set count first last/></fin>` — NEVER stanza content. A working query has
+  NO date fields. App strategy: client-side per-room accumulation (in-memory +
+  sessionStorage 'openplaud.operator.history', cap 500/room) + best-effort MAM count banner.
+  Do NOT expect MAM to return items.
+- strophe.js 5.0.0 (TS rewrite) API facts:
+  - Root exports: Builder, $build, $iq, $msg, $pres, Strophe, Stanza, stx, toStanza, Request,
+    StreamManagement — **Connection is NOT exported from the root**.
+  - `Strophe` = `declare const Strophe: StropheType` (value-only const); `StropheType.Connection:
+    typeof Connection` (static, non-optional). Instance type =
+    `InstanceType<NonNullable<typeof Strophe['Connection']>>`.
+  - `ConnectCallback = (status: number, condition: string|null, elem?: Element) => void`;
+    `addHandler(handler:(stanza:Element)=>boolean, ns, name, type, id, from, options)`;
+    `sendIQ(stanza, cb?, errback?, timeout?)`.
+  - Status codes: ERROR=0, CONNECTING=1, CONNFAIL=2, AUTHFAIL=4, CONNECTED=5, DISCONNECTED=6,
+    CONNTIMEOUT=10, RECONNECTING=13.
+- Strophe SSR bundling: Turbopack statically analyzes even dynamic `import('./client')` — strophe
+  resolves to the Node build (strophe.node.esm.js) needing optional peers; fixed by
+  `npm install ws @xmldom/xmldom saxes` (devDeps). Do not remove.
+- @xmldom has no querySelectorAll — use childNodes walkers (see lib/xmpp/client.ts
+  childByName/childrenByName/textOf helpers).
+
+### RESOLVED — browser XMPP `not-authorized` (fixed 2026-11-02; was: blocks E2E)
+- ROOT CAUSE: this ejabberd build rejects the stream with a `not-authorized` stream error when an
+  application stanza (IQ) is sent BEFORE SASL auth. The app called subscribeGroups() (MucSub
+  type=set IQ) before client.connect(); Strophe queued it and flushed it as soon as the stream
+  opened (pre-auth) → stream error. The Node flow test passed because it subscribes only after
+  CONNECTED. (Browser SASL itself was fine — SCRAM-SHA-512; the failing stanza was the pre-auth
+  subscribe IQ.)
+- FIX: lib/xmpp/store.tsx — removed the early subscribeGroups() call; it now runs ONLY in the
+  onStatus CONNECTED branch (sendPresence() + subscribeGroups()). No other changes.
+- VERIFIED in the browser: stream open → SCRAM-SHA-512 challenge/response → success → bind →
+  <presence/> → MucSub subscribe IQ → <iq type='result'><subscribe nick='Stevan Mosquetti'/></iq>;
+  UI shows "Connected to ejabberd".
+- TEMP DEBUG (window.WebSocket frame-logger) REMOVED from lib/xmpp/client.ts (file clean, 309 lines).
+- Re-check: `npx tsc --noEmit` exit 0; `npm run lint` = 2 problems (exit 1, intentional profile);
+  no errors in dev-server MCP get_errors.
+
+## How to resume (shortest path) — updated 2026-11-02
+1. `docker exec ejabberd ejabberdctl status` → expect running; if down, use deploy procedure above.
+2. Transport + full stanza flow VERIFIED in Node (strophe-test/test-operator-flow.js, PASSED).
+   Re-check: `cd strophe-test && node test-operator-flow.js` (it registers its own customer UUID).
+3. App is BUILT — `npm run dev` → http://localhost:3000 (login flow verified in browser; see
+   App status above). Dev server may already be running in background; check
+   `curl -s http://localhost:3000`.
+4. Debugging stack (next-dev-loop skill, user-scoped): MCP probe = POST http://localhost:3000/_next/
+   mcp with `Accept: text/event-stream, application/json`, read via `sed -n 's/^data: //p'`
+   (get_compilation_issues, get_errors, get_page_metadata, get_logs); browser = agent-browser,
+   session `next-dev-loop-827956aaab8f` (flags `--session <s> --restore`; open needs
+   `--enable react-devtools`). Quirks: keep `agent-browser eval <js>` COMPACT (long evals get
+   truncated → "Unexpected end of input"); `sleep N && cmd` is blocked (use standalone
+   `sleep N # intentional-sleep: <reason>` then a separate call).
+5. Artifacts on disk: /tmp/ejabberd.yml (+ .bak); strophe-test/ (flow test + raw-ws probe + OWN
+   node_modules: strophe, ws, @xmldom/xmldom, saxes — run Node scripts FROM that dir);
+   /tmp/strophe-test + /tmp/xmpp_ws_test.js (superseded, reference only).
+6. eslint.config.mjs: `strophe-test/**` is in globalIgnores (CJS Node harness, not app code).
+
+## Remaining tasks (in order)
+1. [IN FLIGHT] Full E2E (spec-mandated) with stevanmosquetti@localhost / 12345678. Browser = operator
+   (connected — "Connected to ejabberd"). Customer side = strophe-test/e2e-customer.js: registers a
+   fresh customer, POST /chatroom, MUC-joins as "E2E Customer", sends 2 messages, stays KEEP_S s,
+   exits 0 on an operator reply matching /operator|E2E op/i (run FROM strophe-test/:
+   `node e2e-customer.js [uuid] [name] [keepSeconds]`). Steps: card appears in left panel → click →
+   ChatWindow → accept call (POST /chatroom/join + MUC join, outcast others → 1:1) → operator reply
+   (customer logs `RESULT gotOperatorReply: true`) → transfer (mucsub list minus self+customer →
+   GET /operators → POST /chatroom/transfer {room, operatorId:toId, previousOperatorId:me,
+   service}). Verify via agent-browser snapshots + MCP get_errors.
+2. Update spec.txt with the E2E outcome (this file) — mandated before finishing.
+3. Optional cleanup: delete strophe-test/mam_dump.erl, mam_dump2.erl (dev harness; already lint-
+   ignored). Keep e2e-customer.js, probe-raw-ws.js, test-operator-flow.js.
+
+
+ISSUE:
+
+I've created a script that creates a new Customer, a Temp MUC room and sends a message to the room, I also have an Operator logged into the Operator's Live chat console, upon executing the script the DevTools Network console logs the message, this message:
+
+<message xmlns='jabber:client' to='janedoe@localhost' from='26202808-78af-4b17-8a36-0e8543e16649_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference' id='1793642993287394'><archived by='janedoe@localhost' id='1793642993290172' xmlns='urn:xmpp:mam:tmp'/><stanza-id by='janedoe@localhost' id='1793642993290172' xmlns='urn:xmpp:sid:0'/><event xmlns='http://jabber.org/protocol/pubsub#event'><items node='urn:xmpp:mucsub:nodes:messages'><item id='1793642993287394'><message xml:lang='en' to='janedoe@localhost' from='26202808-78af-4b17-8a36-0e8543e16649_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference/Probe Customer' type='groupchat' xmlns='jabber:client'><archived by='26202808-78af-4b17-8a36-0e8543e16649_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference' id='1793642993287394' xmlns='urn:xmpp:mam:tmp'/><stanza-id by='26202808-78af-4b17-8a36-0e8543e16649_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference' id='1793642993287394' xmlns='urn:xmpp:sid:0'/><occupant-id id='g20AAAAg5iGyiS6e7L8zBZEWGOBQxNjLONRRIQU4bpOXNBNE4c8=' xmlns='urn:xmpp:occupant-id:0'/><body>TEST 2</body></message></item></items></event></message>
+
+But no new room card is created!
+
+IMPORTANT: Keep this file (spec.txt) updated with your progress.
+
+
