@@ -72,7 +72,9 @@
 - Server-side API proxy: app/api/proxy/[...path]/route.ts (ALLOWED_ROOTS operator|operators|groups|
   chatroom); API_BASE_URL stays server-side (never leaks); env via NEXT_PUBLIC_XMPP_* (ws URL
   ws://localhost:5280/websocket, domain localhost, service conference).
-- Dev server: `npm run dev` → http://localhost:3000 (running in background).
+- Dev server: `npx next dev -p 3001` → http://localhost:3001 (this checkout). PORT 3000 ON THIS
+  HOST SERVES A DIFFERENT CHECKOUT (openplaud-fed-client, the customer demo app — confirmed
+  via MCP get_project_metadata) — do NOT assume 3000 is this app.
 
 ### Flow (as implemented)
   1. Login (app/login/page.tsx): raw fetch GET /operator/login with explicit
@@ -199,15 +201,50 @@
   (mucsub list as a user), secondop-verify.js / secondop-debug.js (post-transfer MucSub check).
   All lint-ignored; run FROM strophe-test/ (own node_modules).
 
-## How to resume (shortest path) — updated 2026-11-02
+### RESOLVED — own MUC messages invisible + empty join rows (2026-11-03)
+- SYMPTOM (user report): "Operator cannot see their own messages inside a MUC and when they
+  first join the MUC empty message bubbles appear below the text that indicates that the
+  Operator joined".
+- STANZA SHAPES (probe-join-echo.js, live): on MUC join the server delivers (1) nickless room
+  caps presence `from='room@conference'` type='' with `<c/>`, (2) own occupant presence
+  `from='room@conference/Nick'` status-110, (3) join `<message from='room@conference'
+  type='groupchat'>` carrying `<occupant-id/>`+`<subject/>` and **no `<body>`**. Own echo =
+  direct `from='room@conference/Nick' type='groupchat'` with `<stanza-id id='<MAM id>'/>`
+  (id in the `id` attribute).
+- BUG 1 — own groupchat echoes dropped: the direct-MUC branch of parseInbound compared
+  `from.slice(at + 1) === MUC_SERVICE`, but occupant JIDs are `room@conference/Nick` — the
+  slice includes the nick (`conference/Nick` ≠ `conference`) → every occupant groupchat (the
+  operator's own messages) was dropped. FIX: compare only the service part up to the first
+  '/' (lib/xmpp/client.ts:138). Dedupe: MucSub inner and direct echo carry the SAME MAM
+  stanza-id → `sid:<id>` prevents a double-append if both paths deliver the same stanza.
+- BUG 2 — empty rows on join: the nickless room caps presence rendered as a presence row with
+  an empty nick → `" joined the room"` (the "text that indicates the Operator joined"), and
+  the no-`<body>` join `<message>` appended as an empty chat bubble below it. FIXES:
+  handlePresence now `if (!nick) return;` (room-level presence ≠ occupant event,
+  store.tsx:322-323); parseInbound direct branch returns null for nickless / non-groupchat
+  stanzas (client.ts:138); handleRoomMessage `if (!body) return;` backstop (store.tsx:250).
+- SIDE BENEFIT: the real status-110 occupant presence now reaches handlePresence → own branch
+  flips `r.joined = true` + `flushPending` — acceptCall's `//TODO: Make sure mucJoin actually
+  worked` is now covered by the real presence; the forced `joined=true` backstop and the 3s
+  send fallback remain harmless idempotent no-ops.
+- VERIFIED live (spec-mandated, browser operator stevanmosquetti@localhost / 12345678, temp
+  room via e2e-customer.js, 180s keep):
+  1. join: accept → room shows only the customer's 2 messages — NO empty bubble, NO
+     "joined the room" row; "In call — you are 1:1 with the customer.", composer enabled.
+  2. own message: "E2E op reply — operator is here" renders as exactly ONE `.mine` row.
+  3. customer side: e2e-customer.js `RESULT gotOperatorReply: true` (exit 0).
+- Re-check: `npx tsc --noEmit` exit 0; `npm run lint` = 2 problems (exit 1, intentional).
+
+## How to resume (shortest path) — updated 2026-11-03
 1. `docker exec ejabberd ejabberdctl status` → expect running; if down, use deploy procedure above.
 2. Transport + full stanza flow VERIFIED in Node (strophe-test/test-operator-flow.js, PASSED).
    Re-check: `cd strophe-test && node test-operator-flow.js` (it registers its own customer UUID).
-3. App is BUILT — `npm run dev` → http://localhost:3000 (login flow verified in browser; see
-   App status above). Dev server may already be running in background; check
-   `curl -s http://localhost:3000`.
-4. Debugging stack (next-dev-loop skill, user-scoped): MCP probe = POST http://localhost:3000/_next/
-   mcp with `Accept: text/event-stream, application/json`, read via `sed -n 's/^data: //p'`
+3. App is BUILT — THIS CHECKOUT'S dev server runs at http://localhost:3001 (`npx next dev
+   -p 3001`); 3000 on this host is openplaud-fed-client (a DIFFERENT checkout — customer demo,
+   NOT this app). Check `curl -s http://localhost:3001`.
+4. Debugging stack (next-dev-loop skill, user-scoped): MCP probe = POST http://localhost:3001/_next/
+   mcp with `Accept: text/event-stream, application/json` (BOTH types — single-type → 406), read
+   via `sed -n 's/^data: //p'`
    (get_compilation_issues, get_errors, get_page_metadata, get_logs); browser = agent-browser,
    session `next-dev-loop-827956aaab8f` (flags `--session <s> --restore`; open needs
    `--enable react-devtools`). Quirks: keep `agent-browser eval <js>` COMPACT (long evals get
@@ -215,8 +252,9 @@
    `sleep N # intentional-sleep: <reason>` then a separate call).
 5. Artifacts on disk: /tmp/ejabberd.yml (+ .bak); strophe-test/ (flow test + raw-ws probe + OWN
    node_modules: strophe, ws, @xmldom/xmldom, saxes — run Node scripts FROM that dir); added
-   2026-11-03: e2e-customer.js, nudge-customer.js, probe-subs.js, secondop-verify.js,
-   secondop-debug.js; /tmp/strophe-test + /tmp/xmpp_ws_test.js (superseded, reference only).
+   2026-11-03: e2e-customer.js, nudge-customer.js, probe-subs.js, probe-join-echo.js,
+   secondop-verify.js, secondop-debug.js; /tmp/strophe-test + /tmp/xmpp_ws_test.js
+   (superseded, reference only).
 6. eslint.config.mjs: `strophe-test/**` is in globalIgnores (CJS Node harness, not app code).
 
 ## Remaining tasks (in order)
@@ -225,12 +263,21 @@
    transfer to secondop (POST /chatroom/transfer 200, candidates from GET /groups/{groupId}/
    operators minus self) → post-transfer MucSub delivered to secondop
    (secondop-verify.js `RESULT secondopGotMucSub: true`).
-2. [DONE] spec.txt updated with the E2E outcome + the transfer-candidate rework + fixes.
-3. [OPEN, optional] Cleanup: delete strophe-test/mam_dump.erl, mam_dump2.erl (dev harness;
+2. [DONE] MUC own-echo / empty-bubble bug — see RESOLVED "own MUC messages invisible + empty
+   join rows": root causes + 3 edits (client.ts:138, store.tsx:250, store.tsx:322-323),
+   verified live (accept → own message visible exactly once → no empty bubble / no
+   "joined the room" row → e2e-customer.js `RESULT gotOperatorReply: true`).
+3. [DONE] spec.txt updated with the E2E outcome + the transfer-candidate rework + the MUC bug
+   fix + the port 3000/3001 server-identity correction.
+4. [OPEN, optional] Cleanup: delete strophe-test/mam_dump.erl, mam_dump2.erl (dev harness;
    already lint-ignored). Keep e2e-customer.js, nudge-customer.js, probe-subs.js,
-   probe-raw-ws.js, secondop-verify.js, secondop-debug.js, test-operator-flow.js.
-4. [OPEN, optional] `next build` re-check after the store.tsx rework (tsc exit 0 + lint
-   2-problem baseline verified 2026-11-03; a production build was last run before these edits).
+   probe-raw-ws.js, probe-join-echo.js, secondop-verify.js, secondop-debug.js,
+   test-operator-flow.js.
+5. [BLOCKED — env, NOT code] `next build` re-check after the store.tsx rework. RAN 2026-11-03:
+   fails at `next/font` fetching Inter from Google Fonts (app/layout.tsx) — the host is
+   OFFLINE (fonts.googleapis.com does not resolve, HTTP 000). The earlier "clean build" was
+   when the network was up. Unrelated to the MUC edits (tsc exit 0; code live-verified in
+   the dev server + browser E2E). Re-run `npx next build` only once the host has internet.
 
 IMPORTANT: Keep this file (spec.txt) updated with your progress.
 
