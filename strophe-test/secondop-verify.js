@@ -1,14 +1,14 @@
 /**
- * Verify that AFTER a transfer the NEW operator (Benjamin) receives MucSub
+ * Verify that AFTER a transfer the NEW operator (secondop) receives MucSub
  * deliveries for the temp room — i.e. the backend re-applied the
  * subscription to the transfer target.
  *
- * Connects as benjaminmosquetti@localhost/verify and waits for a pubsub
+ * Connects as secondop@localhost/verify and waits for a pubsub
  * <event> delivery (MucSub node urn:xmpp:mucsub:nodes:messages) mentioning
  * the given room. The customer is nudged into the room separately
  * (nudge-customer.js) to trigger the delivery.
  *
- * Usage: node benjamin-verify.js <roomJid> [waitSeconds]
+ * Usage: node secondop-verify.js <roomJid> [waitSeconds]
  *   from strophe-test/
  */
 const { Strophe, $pres } = require('strophe.js');
@@ -20,14 +20,14 @@ globalThis.DOMParser = DOMParser;
 const ROOM = process.argv[2];
 const WAIT_MS = Number(process.argv[3] || 45) * 1000;
 if (!ROOM) {
-  console.error('usage: node benjamin-verify.js <roomJid> [waitSeconds]');
+  console.error('usage: node secondop-verify.js <roomJid> [waitSeconds]');
   process.exit(1);
 }
 
 let got = false;
 
 const conn = new Strophe.Connection('ws://localhost:5280/websocket');
-conn.connect('benjaminmosquetti@localhost/verify', '12345678', (status) => {
+conn.connect('secondop@localhost/verify', '12345678', (status) => {
   if (status === 5) {
     console.log('[ben] CONNECTED, waiting for MucSub event for', ROOM);
     conn.send($pres({}).tree());
@@ -62,6 +62,6 @@ conn.addHandler((raw) => {
 });
 
 setTimeout(() => {
-  console.log(got ? 'RESULT benjaminGotMucSub: true' : 'RESULT benjaminGotMucSub: false');
+  console.log(got ? 'RESULT secondopGotMucSub: true' : 'RESULT secondopGotMucSub: false');
   process.exit(got ? 0 : 2);
 }, WAIT_MS);

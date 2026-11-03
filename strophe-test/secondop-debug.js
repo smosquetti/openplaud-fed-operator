@@ -1,8 +1,8 @@
 /**
- * Debug variant: log EVERY stanza arriving at benjaminmosquetti@localhost
+ * Debug variant: log EVERY stanza arriving at secondop@localhost
  * so we can see whether/what the MucSub push after transfer looks like.
  *
- * Usage: node benjamin-debug.js [waitSeconds]  (from strophe-test/)
+ * Usage: node secondop-debug.js [waitSeconds]  (from strophe-test/)
  */
 const { Strophe, $pres } = require('strophe.js');
 const WebSocket = require('ws');
@@ -14,7 +14,7 @@ const WAIT_MS = Number(process.argv[2] || 45) * 1000;
 let gotEvent = false;
 
 const conn = new Strophe.Connection('ws://localhost:5280/websocket');
-conn.connect('benjaminmosquetti@localhost/debug1', '12345678', (status) => {
+conn.connect('secondop@localhost/debug1', '12345678', (status) => {
   if (status === 5) {
     console.log('[ben] CONNECTED');
     conn.send($pres({}).tree());
@@ -43,6 +43,6 @@ conn.addHandler((raw) => {
 });
 
 setTimeout(() => {
-  console.log(gotEvent ? 'RESULT benjaminGotMucSub: true' : 'RESULT benjaminGotMucSub: false');
+  console.log(gotEvent ? 'RESULT secondopGotMucSub: true' : 'RESULT secondopGotMucSub: false');
   process.exit(gotEvent ? 0 : 2);
 }, WAIT_MS);
