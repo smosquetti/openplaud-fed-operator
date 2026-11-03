@@ -165,18 +165,24 @@ Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
   5. Card click → ChatWindow right of panel: history + composer + "Accept call".
   6. Accept call: POST /chatroom/join {operatorId,groupId,room} + MUC join → other operators outcast
      → 1:1. Windows: multiple open, draggable, minimize to bottom Dock.
-  7. Transfer (TransferDialog): mucsub subscription list (minus self + customer) resolved via
-     GET /operators → POST /chatroom/transfer {room, operatorId:toId, previousOperatorId:me, service}.
+  7. Transfer (TransferDialog): candidates = GET /groups/{groupId}/operators minus self (the
+     mucsub list is NOT a usable source post-join — outcast drops subscriptions, see RESOLVED
+     below) → POST /chatroom/transfer {room, operatorId:toId, previousOperatorId:me, service}.
 - Strophe library: npm package `strophe.js` — NOT `strophe`.
-- Verify end-to-end with stevanmosquetti@localhost / 12345678 before calling it done (PENDING — see
-  Remaining tasks).
+- Verify end-to-end with stevanmosquetti@localhost / 12345678 before calling it done — DONE
+  2026-11-03 (accept → reply → transfer → post-transfer MucSub to Benjamin, see RESOLVED below).
 
 ### XMPP / Strophe learnings (verified live against ejabberd 26.9 — do NOT revisit)
 - MucSub subscribe CONFIRMED: `<iq to='room@conference' type='set'><subscribe xmlns='urn:xmpp:
   mucsub:0' nick='...'/></iq>` — type='get' is REJECTED; the `nick` attribute is required.
 - Subscription list: `<iq type='get' to='room@conference'><subscriptions xmlns='urn:xmpp:mucsub:0'/></iq>`
-  → `<subscription jid='...' nick='...'/>` items (used for transfer candidates; /groups/{id}/operators
-  is admin-gated so NOT usable).
+  → `<subscription jid='...' nick='...'/>` items. Requires room MODERATOR rights (403 "Moderator
+  privileges required" once outcast). NOT a transfer-candidate source — outcast drops the
+  outcast operators' subscriptions, so at transfer time the list = self + customer only.
+- GET /groups/{groupId}/operators: operator-gated (checkOperatorAccess, NOT admin — the old note
+  here claiming admin-gating was WRONG; curl-verified as a regular operator). Response xmppUser
+  = LOCALPART ONLY. This IS the transfer-candidate source (spec: groupId kept "so a future chat
+  transfer is possible").
 - MucSub delivery wrapper: outer `<message to='BARE'>` → `<event pubsub#event>` →
   `<items node='urn:xmpp:mucsub:nodes:messages'>` → `<item>` → inner
   `<message from='room@conference/Nick' type='groupchat'><body>..</body></message>`.
@@ -225,6 +231,46 @@ Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
 - Re-check: `npx tsc --noEmit` exit 0; `npm run lint` = 2 problems (exit 1, intentional profile);
   no errors in dev-server MCP get_errors.
 
+### RESOLVED — accept 500, transfer candidates, full E2E (2026-11-03)
+- FIX 1 — accept call 500: temp rooms never got `groupId` (only the group branch set it) →
+  POST /chatroom/join sent `groupId: null` → 500 internal_error. upsertRoom now parses
+  kind==='temp' → groupId = last '_' segment of the room name (room = `<user>_<group>`).
+  Verified live: join → 200.
+- FIX 2 — acceptCall failure path set `accepting=false` + toast but never `sync()` → button stuck
+  "Accepting…" (toast re-renders only the Toaster, not the rooms tree). Added sync() before the
+  failure return.
+- FIX 3 — drag offset: window left/top are CANVAS-RELATIVE (.op-canvas) but the drag math used
+  viewport coords → window jumped right on mousemove. onTitleMouseDown now subtracts the canvas
+  rect (verified delta [100,40]).
+- FINDING — outcast DROPS MucSub subscriptions: after accept-join (removeAllOtherOperators
+  outcasts the other operators) the room's mucsub list = self + customer ONLY (probe-subs.js:
+  Benjamin gone; TempRoomService does NOT explicitly unsubscribe — the drop is server-side with
+  the outcast). Consequence: the original candidate source (mucsub list minus self + customer)
+  is ALWAYS empty at transfer time (Transfer button only appears in accepted state).
+- FIX 4 — transfer candidates reworked: loadCandidates now uses GET /groups/{groupId}/operators
+  minus self (see XMPP learnings above). Verified: dialog lists Benjamin + Call Agent + Jane Doe,
+  self excluded.
+- E2E (spec-mandated) — GREEN, browser operator stevanmosquetti@localhost / 12345678:
+  1. accept: POST /chatroom/join {operatorId, groupId, room} → 200; chip "In call — you are
+     1:1 with the customer."
+  2. reply: operator sent "E2E op: call accepted, replying." → e2e-customer.js
+     `RESULT gotOperatorReply: true` (exit 0).
+  3. transfer: dialog candidates from /groups/{groupId}/operators → picked Benjamin
+     (6e39c39b) → POST /chatroom/transfer {room, operatorId, previousOperatorId: a6fd0e11,
+     service: conference} → 200; UI "Transferred to Benjamin Mosquetti"; Stevan MUC-left +
+     outcast (probe as Stevan now 403 "Moderator privileges required" — no longer mod).
+  4. post-transfer MucSub (user-confirmed behavior, VERIFIED): customer nudge → delivery
+     `to='benjaminmosquetti@localhost'` with pubsub#event items node
+     'urn:xmpp:mucsub:nodes:messages' → strophe-test/benjamin-verify.js
+     `RESULT benjaminGotMucSub: true`. Observed: previous operator (Stevan) receives NO further
+     MucSub for the room (his subscription dropped with the outcast, same as accept).
+- PITFALL: @xmldom/xmldom has NO querySelector/querySelectorAll — Node probe scripts must walk
+  childNodes (app code uses browser DOM, unaffected). benjamin-verify.js first "false" run was
+  this bug, not a backend failure.
+- New strophe-test/ harness: nudge-customer.js (one-off customer MUC message), probe-subs.js
+  (mucsub list as a user), benjamin-verify.js / benjamin-debug.js (post-transfer MucSub check).
+  All lint-ignored; run FROM strophe-test/ (own node_modules).
+
 ## How to resume (shortest path) — updated 2026-11-02
 1. `docker exec ejabberd ejabberdctl status` → expect running; if down, use deploy procedure above.
 2. Transport + full stanza flow VERIFIED in Node (strophe-test/test-operator-flow.js, PASSED).
@@ -240,23 +286,23 @@ Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
    truncated → "Unexpected end of input"); `sleep N && cmd` is blocked (use standalone
    `sleep N # intentional-sleep: <reason>` then a separate call).
 5. Artifacts on disk: /tmp/ejabberd.yml (+ .bak); strophe-test/ (flow test + raw-ws probe + OWN
-   node_modules: strophe, ws, @xmldom/xmldom, saxes — run Node scripts FROM that dir);
-   /tmp/strophe-test + /tmp/xmpp_ws_test.js (superseded, reference only).
+   node_modules: strophe, ws, @xmldom/xmldom, saxes — run Node scripts FROM that dir); added
+   2026-11-03: e2e-customer.js, nudge-customer.js, probe-subs.js, benjamin-verify.js,
+   benjamin-debug.js; /tmp/strophe-test + /tmp/xmpp_ws_test.js (superseded, reference only).
 6. eslint.config.mjs: `strophe-test/**` is in globalIgnores (CJS Node harness, not app code).
 
 ## Remaining tasks (in order)
-1. [IN FLIGHT] Full E2E (spec-mandated) with stevanmosquetti@localhost / 12345678. Browser = operator
-   (connected — "Connected to ejabberd"). Customer side = strophe-test/e2e-customer.js: registers a
-   fresh customer, POST /chatroom, MUC-joins as "E2E Customer", sends 2 messages, stays KEEP_S s,
-   exits 0 on an operator reply matching /operator|E2E op/i (run FROM strophe-test/:
-   `node e2e-customer.js [uuid] [name] [keepSeconds]`). Steps: card appears in left panel → click →
-   ChatWindow → accept call (POST /chatroom/join + MUC join, outcast others → 1:1) → operator reply
-   (customer logs `RESULT gotOperatorReply: true`) → transfer (mucsub list minus self+customer →
-   GET /operators → POST /chatroom/transfer {room, operatorId:toId, previousOperatorId:me,
-   service}). Verify via agent-browser snapshots + MCP get_errors.
-2. Update spec.txt with the E2E outcome (this file) — mandated before finishing.
-3. Optional cleanup: delete strophe-test/mam_dump.erl, mam_dump2.erl (dev harness; already lint-
-   ignored). Keep e2e-customer.js, probe-raw-ws.js, test-operator-flow.js.
+1. [DONE] Full E2E (spec-mandated) — see RESOLVED "accept 500, transfer candidates, full E2E"
+   above: accept (join 200) → reply (e2e-customer.js `RESULT gotOperatorReply: true`) →
+   transfer to Benjamin (POST /chatroom/transfer 200, candidates from GET /groups/{groupId}/
+   operators minus self) → post-transfer MucSub delivered to Benjamin
+   (benjamin-verify.js `RESULT benjaminGotMucSub: true`).
+2. [DONE] spec.txt updated with the E2E outcome + the transfer-candidate rework + fixes.
+3. [OPEN, optional] Cleanup: delete strophe-test/mam_dump.erl, mam_dump2.erl (dev harness;
+   already lint-ignored). Keep e2e-customer.js, nudge-customer.js, probe-subs.js,
+   probe-raw-ws.js, benjamin-verify.js, benjamin-debug.js, test-operator-flow.js.
+4. [OPEN, optional] `next build` re-check after the store.tsx rework (tsc exit 0 + lint
+   2-problem baseline verified 2026-11-03; a production build was last run before these edits).
 
 
 
