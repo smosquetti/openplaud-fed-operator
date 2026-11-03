@@ -129,9 +129,13 @@ export function parseInbound(st: Element): Inbound | null {
   const type = st.getAttribute('type');
   const at = from.indexOf('@');
 
-  if (at > 0 && from.slice(at + 1) === MUC_SERVICE) {
-    // Direct MUC groupchat (operator is a room occupant).
+  if (at > 0 && from.slice(at + 1).split('/')[0] === MUC_SERVICE) {
+    // MUC stanza: occupant echo (from='room@conference/Nick') or room system
+    // message (from='room@conference' — join/subject/creation, no <body>).
+    // The service part is everything up to the first '/', because occupant
+    // JIDs carry the nick after it.
     const nick = nickOf(from);
+    if (!nick || type !== 'groupchat') return null;
     const body = textOf(childByName(st, 'body'));
     const stanzaId = stanzaIdOf(childByName(st, 'stanza-id'));
     return {

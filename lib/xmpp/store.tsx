@@ -39,6 +39,7 @@ export interface RoomState {
   joined: boolean;
   joining: boolean;
   accepting: boolean;
+  disconnected: boolean;
   mamCount: number | null;
   mamLoading: boolean;
   open: boolean;
@@ -185,6 +186,7 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
         joined: false,
         joining: false,
         accepting: false,
+        disconnected: false,
         mamCount: null,
         mamLoading: false,
         open: false,
@@ -247,6 +249,7 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
     (ib: Inbound) => {
       if (ib.kind !== 'room') return;
       const { room, service, nick, body, stanzaId, ts } = ib;
+      if (!body) return; // system stanzas (join/subject/etc.) carry no chat content
       const kind: RoomKind = groupsRef.current.some((g) => g.room === room) ? 'group' : 'temp';
       const r = upsertRoom(room, service, kind);
       if (kind === 'group') {
@@ -316,9 +319,10 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
     (st: Element) => {
       const from = st.getAttribute('from') ?? '';
       const at = from.indexOf('@');
-      if (at <= 0 || from.slice(at + 1) !== SERVICE) return;
+      if (at <= 0 || from.slice(at + 1).split('/')[0] !== SERVICE) return;
       const room = from.slice(0, at);
       const nick = nickOfLocal(from);
+      if (!nick) return; // MUC service / room presence (caps, close) — not an occupant event
       const type = st.getAttribute('type') ?? '';
       const r = roomsRef.current[room];
       if (!r) return;
@@ -337,14 +341,17 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
       }
       // Other occupant join/leave — system rows only for rooms already
       // tracked (presence never creates cards).
-      appendMsg(room, {
-        key: `sys:${room}|${nick}|${type === 'unavailable' ? 'left' : 'joined'}|${Date.now()}`,
-        from: 'system',
-        mine: false,
-        sys: true,
-        body: type === 'unavailable' ? `${nick} left the room` : `${nick} joined the room`,
-        ts: Date.now(),
-      });
+      if ((r.disconnected && type !== 'unavailable') || (!r.disconnected && type === 'unavailable')) {
+        r.disconnected = !r.disconnected;
+        appendMsg(room, {
+          key: `sys:${room}|${nick}|${type === 'unavailable' ? 'left' : 'joined'}|${Date.now()}`,
+          from: 'system',
+          mine: false,
+          sys: true,
+          body: type === 'unavailable' ? `${nick} left the room` : `${nick} joined the room`,
+          ts: Date.now(),
+        });
+      }
     },
     [appendMsg, flushPending, myNick, sync],
   );
