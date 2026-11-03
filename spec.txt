@@ -232,8 +232,6 @@
 4. [OPEN, optional] `next build` re-check after the store.tsx rework (tsc exit 0 + lint
    2-problem baseline verified 2026-11-03; a production build was last run before these edits).
 
-
-
 IMPORTANT: Keep this file (spec.txt) updated with your progress.
 
 

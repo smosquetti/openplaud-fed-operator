@@ -605,6 +605,10 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
         }
         cur.call = 'accepted';
         clientRef.current?.mucJoin(`${cur.room}@${cur.service}`, myNick);
+        //TODO: Make sure mucJoin actually worked
+        if (!roomsRef.current[room]) return;
+        cur.joined = true;
+        r.joined = true;
         toast('success', 'Call accepted', 'You are now the sole operator on this call.');
         sync();
       })();
