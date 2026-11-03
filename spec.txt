@@ -1,75 +1,3 @@
-openplaud-fed-operator
-
-React + Next.js
-
-An XMPP powered chat call center, an operator should first log in with their XMPP credentials then after authenticated they have access to the list of Operator Groups they are part of and should subscribe the Groups respective persistent MUC rooms.
-
-The login:
-
-The openlaud-srv-admin has an endpoint for Operators to login/authenticate, this validates if the Operator has the right to access the chat interface and take "calls".
-
-Ejabberd and XMPP:
-
-The chat call center should connect the Operator with the ejabberd server using the Strophe.js library over Websocket (try to avoid BOSH), the openlaud-srv-admin is only for authentication and management.
-
-The interface:
-
-There's vertical panel on the left side of the page, this panel shows each MUC room the Operator is receiving messages from, each MUC is represented by a card with the title/header being the name of the Group (if it is a persistent MUC room based on an Operator Group) or the name (nick in ejabberd) of the user who created the Tempo Room, below the title the lastest message sent within the room should be shown. When clicking on the card a Chat windows should apear to the right of this vertical panel, the entire conversation history should be shown and the Operator can choose to accept the "call" by joining it, when joining the chat all other Operators should be removed from the MUC room so the Operator can have a 1:1 conversation with the user who created the temporary MUC room.
-
-The Temporary MUC room should be titled after the User's nick (the User is the sole occupant with a 'member' affiliation) or the MUC's title, all the Operators are configured with an 'admin' affiliation. (the Temporary MUC room is idenfitied on Ejabbed by its name, created from the combination of the user's XMPP username (localpart) with is an auto-generated UUID and an underscore '_' and the Operator Group UUID example: c04582c4-cf45-4191-a8ac-6d9b0b041c79_c7fc5856-51f2-47d3-a0d2-ef26a6692200 snake_case style. The Operator may use the last part, the groupId, after the underscore to get the list of Operators assigned to the Group so a future chat transfer is possible.)
-
-An Operator can have multiple chat rooms open at any given time and should be able to drag the chat window around the page as well as minimize it to the bottom of the page to avoid too many distracting chat windows populating the page.
-
-Operators are subscribed to Temporary MUC room upon creation, the Operators are selected based on the Group they belong to.
-
-Subscribing to a Multi-User Chat (MUC) room in ejabberd (via the MucSub / MUC/Sub extension) allows a user to receive group messages and room events directly to their Jabber ID (JID) as a PubSub node, without needing to "join" the room or send online presence stanzas.
-
-What Subscribing Does
-
-• Receive Messages Without Presence: You get all chat messages and room notifications routed to your JID without having to show up as an active, online participant in the room's occupant list.
-• PubSub Architecture: It exposes the MUC room like a Publish-Subscribe (PubSub) channel. When messages are published to the room, the server delivers them to all subscribed JIDs.
-
-POST /api/v1/chatroom endpoint does not require authentication
-GET /api/v1/groups endpoint does not require authentication
-
-Those two endpoints are public for the Customer's end to consume.
-
-Let me know if you need more information to build a working multi-chat call center like hub for an Operator to communicate with users via XMPP/ejabberd
-
-Operator: Stevan Mosquetti
-Operator login/JID: stevanmosquetti@localhost
-Password: 12345678
-Operator UUID: a6fd0e11-9502-43b6-b739-82c85337015f
-
-Group: Backend Support Team
-Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
-
-## Flow Test
-- Using the script located inside the /strophe-test directory inside the project tests if the flow
-  works using the Strophe.js library
-  1. Sets up the room (customer registered, room created).
-  2. Operator connects AND sends $pres() (initial availability).
-  3. Customer connects, joins, sends message.
-  4. Operator (with $pres() sent) receives the wrapped event.
-
-  Additional information:
-
-  In ejabberd 26, the intersection of MUC/Sub, members-only rooms, and non-occupant Admins contains a strict, counter-intuitive routing trap.
-
-   The Problem: Admin ≠ Member in ejabberd 26 routing
-
-   When a room is marked members-only, ejabberd 26 triggers a hard intercept hook (check_access) inside mod_muc.
-   • The Trap: When a standard occupant sends a message, ejabberd loops over the active subscription list. For every recipient, it evaluates whether they have permission to see the content of that members-only room.
-   • The Check: The routing engine evaluates if the target JID has the specific authorization state of member.
-   • The Failure: Even though an admin or owner affiliation holds a higher general rank than a member, ejabberd's literal validation check looks for the member attribute specifically in the room's access list. If you are an admin but your JID is missing from the explicit room member list, the packet is silently dropped by the privacy check before it hits the delivery queue.
-
-   IMPORTANT: At this moment the API is setting the Operator's affiliation as 'admin' I've kept this behaviour because other changes are in place and I want to make sure which one actually fixes the issue.
-   If the test fails the next step will be to change the API to set the Operator's affiliation to 'member' during the MUC creation process.
-
-
----
-# HANDOFF: progress, decisions, and how to resume (updated 2026-11-01)
-
 ## Locked decisions (do NOT revisit)
 1. XMPP client = Strophe.js over native WebSocket (user decision; "try to avoid BOSH").
    Target endpoint: ws://localhost:5280/websocket.
@@ -170,7 +98,7 @@ Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
      below) → POST /chatroom/transfer {room, operatorId:toId, previousOperatorId:me, service}.
 - Strophe library: npm package `strophe.js` — NOT `strophe`.
 - Verify end-to-end with stevanmosquetti@localhost / 12345678 before calling it done — DONE
-  2026-11-03 (accept → reply → transfer → post-transfer MucSub to Benjamin, see RESOLVED below).
+  2026-11-03 (accept → reply → transfer → post-transfer MucSub to secondop, see RESOLVED below).
 
 ### XMPP / Strophe learnings (verified live against ejabberd 26.9 — do NOT revisit)
 - MucSub subscribe CONFIRMED: `<iq to='room@conference' type='set'><subscribe xmlns='urn:xmpp:
@@ -244,31 +172,31 @@ Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
   rect (verified delta [100,40]).
 - FINDING — outcast DROPS MucSub subscriptions: after accept-join (removeAllOtherOperators
   outcasts the other operators) the room's mucsub list = self + customer ONLY (probe-subs.js:
-  Benjamin gone; TempRoomService does NOT explicitly unsubscribe — the drop is server-side with
+  secondop gone; TempRoomService does NOT explicitly unsubscribe — the drop is server-side with
   the outcast). Consequence: the original candidate source (mucsub list minus self + customer)
   is ALWAYS empty at transfer time (Transfer button only appears in accepted state).
 - FIX 4 — transfer candidates reworked: loadCandidates now uses GET /groups/{groupId}/operators
-  minus self (see XMPP learnings above). Verified: dialog lists Benjamin + Call Agent + Jane Doe,
+  minus self (see XMPP learnings above). Verified: dialog lists secondop + Call Agent + Jane Doe,
   self excluded.
 - E2E (spec-mandated) — GREEN, browser operator stevanmosquetti@localhost / 12345678:
   1. accept: POST /chatroom/join {operatorId, groupId, room} → 200; chip "In call — you are
      1:1 with the customer."
   2. reply: operator sent "E2E op: call accepted, replying." → e2e-customer.js
      `RESULT gotOperatorReply: true` (exit 0).
-  3. transfer: dialog candidates from /groups/{groupId}/operators → picked Benjamin
+  3. transfer: dialog candidates from /groups/{groupId}/operators → picked secondop
      (6e39c39b) → POST /chatroom/transfer {room, operatorId, previousOperatorId: a6fd0e11,
-     service: conference} → 200; UI "Transferred to Benjamin Mosquetti"; Stevan MUC-left +
+     service: conference} → 200; UI "Transferred to secondop"; Stevan MUC-left +
      outcast (probe as Stevan now 403 "Moderator privileges required" — no longer mod).
   4. post-transfer MucSub (user-confirmed behavior, VERIFIED): customer nudge → delivery
-     `to='benjaminmosquetti@localhost'` with pubsub#event items node
-     'urn:xmpp:mucsub:nodes:messages' → strophe-test/benjamin-verify.js
-     `RESULT benjaminGotMucSub: true`. Observed: previous operator (Stevan) receives NO further
+     `to='secondop@localhost'` with pubsub#event items node
+     'urn:xmpp:mucsub:nodes:messages' → strophe-test/secondop-verify.js
+     `RESULT secondopGotMucSub: true`. Observed: previous operator (Stevan) receives NO further
      MucSub for the room (his subscription dropped with the outcast, same as accept).
 - PITFALL: @xmldom/xmldom has NO querySelector/querySelectorAll — Node probe scripts must walk
-  childNodes (app code uses browser DOM, unaffected). benjamin-verify.js first "false" run was
+  childNodes (app code uses browser DOM, unaffected). secondop-verify.js first "false" run was
   this bug, not a backend failure.
 - New strophe-test/ harness: nudge-customer.js (one-off customer MUC message), probe-subs.js
-  (mucsub list as a user), benjamin-verify.js / benjamin-debug.js (post-transfer MucSub check).
+  (mucsub list as a user), secondop-verify.js / secondop-debug.js (post-transfer MucSub check).
   All lint-ignored; run FROM strophe-test/ (own node_modules).
 
 ## How to resume (shortest path) — updated 2026-11-02
@@ -287,20 +215,20 @@ Group UUID: 18c4c671-9ced-454b-b7ce-a5eb333b331e
    `sleep N # intentional-sleep: <reason>` then a separate call).
 5. Artifacts on disk: /tmp/ejabberd.yml (+ .bak); strophe-test/ (flow test + raw-ws probe + OWN
    node_modules: strophe, ws, @xmldom/xmldom, saxes — run Node scripts FROM that dir); added
-   2026-11-03: e2e-customer.js, nudge-customer.js, probe-subs.js, benjamin-verify.js,
-   benjamin-debug.js; /tmp/strophe-test + /tmp/xmpp_ws_test.js (superseded, reference only).
+   2026-11-03: e2e-customer.js, nudge-customer.js, probe-subs.js, secondop-verify.js,
+   secondop-debug.js; /tmp/strophe-test + /tmp/xmpp_ws_test.js (superseded, reference only).
 6. eslint.config.mjs: `strophe-test/**` is in globalIgnores (CJS Node harness, not app code).
 
 ## Remaining tasks (in order)
 1. [DONE] Full E2E (spec-mandated) — see RESOLVED "accept 500, transfer candidates, full E2E"
    above: accept (join 200) → reply (e2e-customer.js `RESULT gotOperatorReply: true`) →
-   transfer to Benjamin (POST /chatroom/transfer 200, candidates from GET /groups/{groupId}/
-   operators minus self) → post-transfer MucSub delivered to Benjamin
-   (benjamin-verify.js `RESULT benjaminGotMucSub: true`).
+   transfer to secondop (POST /chatroom/transfer 200, candidates from GET /groups/{groupId}/
+   operators minus self) → post-transfer MucSub delivered to secondop
+   (secondop-verify.js `RESULT secondopGotMucSub: true`).
 2. [DONE] spec.txt updated with the E2E outcome + the transfer-candidate rework + fixes.
 3. [OPEN, optional] Cleanup: delete strophe-test/mam_dump.erl, mam_dump2.erl (dev harness;
    already lint-ignored). Keep e2e-customer.js, nudge-customer.js, probe-subs.js,
-   probe-raw-ws.js, benjamin-verify.js, benjamin-debug.js, test-operator-flow.js.
+   probe-raw-ws.js, secondop-verify.js, secondop-debug.js, test-operator-flow.js.
 4. [OPEN, optional] `next build` re-check after the store.tsx rework (tsc exit 0 + lint
    2-problem baseline verified 2026-11-03; a production build was last run before these edits).
 
