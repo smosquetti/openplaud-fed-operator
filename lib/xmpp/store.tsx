@@ -149,7 +149,6 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
   const myDomain = session.username.includes('@')
     ? session.username.split('@')[1]
     : (process.env.NEXT_PUBLIC_XMXX_DOMAIN ?? process.env.NEXT_PUBLIC_XMPP_DOMAIN ?? 'localhost');
-  const myBare = `${myLocal}@${myDomain}`;
   const myNick = session.operatorName || myLocal;
 
   /* ---------------- room state helpers (ref + state mirror) ---------------- */
@@ -163,11 +162,18 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
     let r = map[room];
     if (!r) {
       const history = readHistory()[room] ?? [];
+      // Temp rooms are named `<userUUID>_<groupUUID>`; the group UUID (last
+      // underscore segment) is required by POST /chatroom/join.
+      let groupId: string | null = null;
+      if (kind === 'temp') {
+        const segs = room.split('@')[0].split('_');
+        if (segs.length >= 2) groupId = segs[segs.length - 1];
+      }
       r = {
         room,
         service: service || SERVICE,
         kind,
-        groupId: null,
+        groupId,
         group: null,
         title: '',
         titleFixed: false,
@@ -594,6 +600,7 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
         cur.accepting = false;
         if (!res.ok) {
           toast('error', 'Could not accept the call', res.error?.message ?? 'The backend rejected the join request.');
+          sync();
           return;
         }
         cur.call = 'accepted';
@@ -632,40 +639,25 @@ export function ChatProvider({ session, children }: { session: OperatorSession; 
   const loadCandidates = useCallback(
     async (room: string): Promise<TransferCandidate[]> => {
       const r = roomsRef.current[room];
-      if (!r) return [];
-      const p = clientRef.current?.mucSubscriptions(`${r.room}@${r.service}`);
-      const subs = p ? await p : null;
-      if (!subs) return [];
-
-      const items: { jid: string; nick: string }[] = [];
-      const walk = (n: Element) => {
-        if (n.nodeName === 'subscription') {
-          items.push({ jid: n.getAttribute('jid') ?? '', nick: n.getAttribute('nick') ?? '' });
-        }
-        const kids = n.childNodes || [];
-        for (let i = 0; i < kids.length; i++) walk(kids[i] as Element);
-      };
-      walk(subs);
-
-      const customerPart = r.room.split('_')[0];
-      const seen = new Set<string>();
-      const cands: { jid: string; nick: string }[] = [];
-      for (const i of items) {
-        const bare = i.jid.split('/').slice(0, 2).join('/');
-        if (!bare || bare === myBare || localpartOf(bare) === customerPart) continue;
-        if (seen.has(bare)) continue;
-        seen.add(bare);
-        cands.push({ jid: bare, nick: i.nick });
-      }
-
-      const ops = await getOperators();
-      return cands.map((c) => {
-        const lp = localpartOf(c.jid);
-        const op = ops.find((o) => o.xmppUser === lp);
-        return { id: op?.id ?? '', name: op?.name ?? (c.nick || lp), xmppUser: lp, nick: c.nick || null };
-      });
+      if (!r || r.call !== 'accepted' || !r.groupId) return [];
+      // The MucSub subscription list is not a usable source here: accepting
+      // the call outcasts the other operators and their MucSub
+      // subscriptions are dropped with the outcast, so at transfer time only
+      // self + customer remain. The spec's candidate source is the group's
+      // operator list instead — the temp room name's last segment is the
+      // group UUID, which resolves via GET /groups/{groupId}/operators.
+      const res = await apiFetch<Operator[]>(`/groups/${r.groupId}/operators`);
+      if (!res.ok || !res.data) return [];
+      return res.data
+        .filter((o) => o.id !== session.operatorId)
+        .map((o) => ({
+          id: o.id,
+          name: o.name,
+          xmppUser: o.xmppUser,
+          nick: null,
+        }));
     },
-    [getOperators, myBare],
+    [session.operatorId],
   );
 
   /* ---------------- derived values ---------------- */

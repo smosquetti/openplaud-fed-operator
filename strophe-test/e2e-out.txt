@@ -1,10 +1,11 @@
 customer registered
-room: 78ca01b6-3407-4214-968f-f9564432bf8b_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference
+room: 984d938b-997c-48d8-9b58-911b35cce349_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference
 Websocket open
 _connect_cb was called
 SASL authentication succeeded.
-[cust] <<  <message xmlns="jabber:client" to="78ca01b6-3407-4214-968f-f9564432bf8b@localhost/e2ecust" from="78ca01b6-3407-4214-968f-f9564432bf8b_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference" type="groupchat">
+[cust] <<  <message xmlns="jabber:client" to="984d938b-997c-48d8-9b58-911b35cce349@localhost/e2ecust" from="984d938b-997c-48d8-9b58-911b35cce349_18c4c671-9ced-454b-b7ce-a5eb333b331e@conference" type="groupchat">
 [cust] << (own echo, ignored) E2E hello from the customer
-customer sent 2 messages. Staying in room 300 s (waiting for operator accept + reply)...
+customer sent 2 messages. Staying in room 600 s (waiting for operator accept + reply)...
 [cust] << (own echo, ignored) E2E this should make the operator card appear
-RESULT gotOperatorReply: false
+[cust] << Stevan Mosquetti:  E2E op: call accepted, replying.
+RESULT gotOperatorReply: true
